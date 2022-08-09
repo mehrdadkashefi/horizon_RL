@@ -3,7 +3,7 @@ from matplotlib.cm import jet
 import matplotlib.pyplot as plt
 import torch
 from tqdm import tqdm
-
+from multiprocessing import Pool
 
 class Kernel_Gaussian():
     def __init__(self,x_range, y_range, n_kernel, S, do_plot):
@@ -81,11 +81,12 @@ def state_dict_unpack(state_dict, param, new_flatten):
 #new_state_dict = state_dict_unpack(state_dict, param, param['val_flatten'])
 
 class GA():
-    def __init__(self, num_pop, cost_fun, mut_rate, tournament_size):
+    def __init__(self, num_pop, cost_fun, mut_rate, tournament_size, num_par_core):
         self.num_pop = num_pop
         self.mut_rate = mut_rate
         self.tournament_size = tournament_size
         self.cost_fun = cost_fun
+        self.num_core = num_par_core
     
     # Generate a population
     def generate_population(self, size=407):
@@ -97,16 +98,18 @@ class GA():
             pop.append(p)
         self.pop = pop
 
+
+    def get_fitness_for_poolMap(self, pop):
+        pop['fitness'] = self.cost_fun(pop)
+        return pop
     # Evaluate population
     def evaluate_population(self):
-        tot_fit = 0
-        lp = len(self.pop)
-        for agent in self.pop:
-            score = self.cost_fun(agent)
-            agent['fitness'] = score
-            tot_fit += score
-            avg_fit = tot_fit / lp
-        return avg_fit
+        if self.num_core > 0:
+            with Pool(self.num_core) as p:
+                self.pop = p.map(self.get_fitness_for_poolMap, self.pop)
+        else: 
+            pass # a simple for loop for cost (add later)
+        return np.mean([p['fitness'] for p in self.pop])
 
 
     def mutate(self, x):
