@@ -2,6 +2,7 @@ import argparse
 import os
 import random
 import time
+import pickle
 from distutils.util import strtobool
 
 import gym
@@ -18,10 +19,9 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--exp-name", type=str, default=os.path.basename(__file__).rstrip(".py"),
         help="the name of this experiment")
-    #parser.add_argument("--gym-id", type=str, default="HalfCheetah-v2",
     parser.add_argument("--gym-id", type=str, default="Horizon-v0",
         help="the id of the gym environment")
-    parser.add_argument("--learning-rate", type=float, default=2.5e-4,
+    parser.add_argument("--learning-rate", type=float, default=6e-4,
         help="the learning rate of the optimizer")
     parser.add_argument("--seed", type=int, default=1,
         help="seed of the experiment")
@@ -45,7 +45,7 @@ def parse_args():
         help="the number of units for the recurrent network")
     parser.add_argument("--num-envs", type=int, default=8,
         help="the number of parallel game environments")
-    parser.add_argument("--num-steps", type=int, default=128,
+    parser.add_argument("--num-steps", type=int, default=600,
         help="the number of steps to run in each environment per policy rollout")
     parser.add_argument("--anneal-lr", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
         help="Toggle learning rate annealing for policy and value networks")
@@ -89,9 +89,9 @@ def make_env(gym_id, seed, idx, capture_video, run_name):
                 env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
         env = gym.wrappers.ClipAction(env)
         env = gym.wrappers.NormalizeObservation(env)
-        env = gym.wrappers.TransformObservation(env, lambda obs: np.clip(obs, -10, 10))
+        #env = gym.wrappers.TransformObservation(env, lambda obs: np.clip(obs, -10, 10))
         env = gym.wrappers.NormalizeReward(env)
-        env = gym.wrappers.TransformReward(env, lambda reward: np.clip(reward, -10, 10))
+        #env = gym.wrappers.TransformReward(env, lambda reward: np.clip(reward, -10, 10))
         env.seed(seed)
         env.action_space.seed(seed)
         env.observation_space.seed(seed)
@@ -111,7 +111,7 @@ class Agent(nn.Module):
         super(Agent, self).__init__()
         self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(envs.single_action_space.shape)))
         # Initialize RNN
-        self.rnn = nn.RNN(envs.single_observation_space.shape[0], args.num_units)
+        self.rnn = nn.GRU(envs.single_observation_space.shape[0], args.num_units)
         for name, param in self.rnn.named_parameters():
             if "bias" in name:
                 nn.init.constant_(param, 0)
@@ -363,6 +363,12 @@ if __name__ == "__main__":
         writer.add_scalar("losses/explained_variance", explained_var, global_step)
         print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
+
+    # Save the model
+    torch.save(agent, "./runs/"+run_name+"/agent")
+    file_name = './runs/' + run_name + '/args.pkl'
+    with open(file_name, 'wb') as file:
+        pickle.dump(args, file)
 
     envs.close()
     writer.close()
